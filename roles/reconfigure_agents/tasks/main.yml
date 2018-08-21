@@ -1,0 +1,24 @@
+---
+
+# Reconfigure the Server/ServerActive Parameters for the given proxy and restart
+# the Zabbix Agent after doing so.
+
+- name: Set Zabbix Server
+  lineinfile:
+    path: /etc/zabbix/zabbix_agentd.conf
+    regexp: '^Server='
+    line: "Server={{ zabbix_proxy_interface }}"
+  become: true
+
+- name: Set Zabbix ServerActive
+  lineinfile:
+    path: /etc/zabbix/zabbix_agentd.conf
+    regexp: '^ServerActive='
+    line: "ServerActive={{ zabbix_proxy_interface }}"
+  become: true
+
+- name: Restart Zabbix Agent
+  service:
+    name: zabbix-agent
+    state: restarted
+  become: true

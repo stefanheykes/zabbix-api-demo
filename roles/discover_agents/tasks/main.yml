@@ -1,0 +1,23 @@
+---
+
+# Find the hosts for the given proxy and add them to inventory
+
+- name: get hosts monitored by proxy
+  local_action:
+    module: zabbix_api
+    server_url: "http://{{ inventory_hostname }}:9595/"
+    login_user: "{{ zabbix_apiuser }}"
+    login_password: "{{ zabbix_apipw }}"
+    api_object: "host"
+    api_method: "get"
+    api_options:
+        {"filter": {"proxy_hostid": "{{ zabbix_proxy.proxyid }}"},
+         "selectInterfaces": "extend"}
+  register: zabbix_hosts
+
+- name: Add discovered host to inventory
+  add_host:
+    name: "{{ item.interfaces[0].ip }}"
+    groups: zabbix_agent_hosts
+    zabbix_proxy_interface: "{{ zabbix_proxy.interface.dns }}"
+  loop: "{{ zabbix_hosts.result }}"

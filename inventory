@@ -1,0 +1,2 @@
+[zabbix_server]
+10.211.55.101 zabbix_apiuser=Admin zabbix_apipw=zabbix
