@@ -1,0 +1,61 @@
+---
+
+# This playbook moves all hosts from one proxy to another and reconfigures the agents for this
+# Example call: ansible-playbook -i inventory move_proxy_hosts_away.yml -e "old_proxy=<proxy name>" -e "new_proxy=<proxy name>"
+
+- hosts: zabbix_web
+  run_once: true
+  gather_facts: false
+  tasks:
+    # Add "old" proxy to inventory
+    - include_role:
+        name: discover_proxies
+      vars:
+        zabbix_proxies_filter: {"host": "{{ old_proxy }}"}
+    # Add "new" proxy to inventory
+    - include_role:
+        name: discover_proxies
+      vars:
+        zabbix_proxies_filter: {"host": "{{ new_proxy }}"}
+    # add all agent hosts that are configured for the old proxy to inventory
+    - include_role:
+        name: discover_agents
+      vars:
+        zabbix_hosts_filter: {"proxy_hostid": "{{ hostvars[old_proxy].zabbix_proxy.proxyid }}"}
+    # Move nodes from first to second found proxy
+    - name: move hosts to from old to new proxy
+      local_action:
+        module: zabbix_api
+        server_url: "http://{{ inventory_hostname }}:9595/"
+        login_user: "{{ zabbix_apiuser }}"
+        login_password: "{{ zabbix_apipw }}"
+        api_object: "host"
+        api_method: "update"
+        api_options:
+            {"hostid": "{{ item.hostid }}",
+             "proxy_hostid": "{{ hostvars[new_proxy].zabbix_proxy.proxyid }}"} 
+      loop: "{{ hostvars[old_proxy].zabbix_proxy.hosts }}"
+
+# Reconfigure the zabbix agent on discovered hosts
+- hosts: zabbix_agent_hosts
+  gather_facts: false
+  tasks:
+    - name: Set Zabbix Server
+      lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^Server='
+        line: "Server={{ hostvars[new_proxy].zabbix_proxy.interface.dns }}"
+      become: true
+
+    - name: Set Zabbix ServerActive
+      lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^ServerActive='
+        line: "ServerActive={{ hostvars[new_proxy].zabbix_proxy.interface.dns }}"
+      become: true
+
+    - name: Restart Zabbix Agent
+      service:
+        name: zabbix-agent
+        state: restarted
+      become: true

@@ -1,8 +1,23 @@
 ---
 
-# Find the hosts for the given proxy and add them to inventory
+# Find the hosts for the given filter and add them to inventory
+# This role expects the ansible master to have pyzabbix installed
+# It needs to be run for the Zabbix API Host and expects it to listen
+# on port 9595
+#
+# zabbix_apiuser and zabbix_apipw are used as login variables
+# zabbix_hosts_filter is needed as a variable to filter on the Zabbix Server
+# This role adds all discovered hosts and appends the complete information Zabbix
+# offers via API as a host variable
+#
+# It uses either the host name or IP as inventory name, depending on the setting inside
+# zabbix. This role assumes that the first interface in zabbix is available for ssh connections
+#
+# If it discovers a host with interface setting 127.0.0.1/localhost, it is ignored - this role
+# assumes that it would make no sense to add it to the inventory, as it is most likely a "virtual" host
+# and not reflecting a real host, that can be connected to
 
-- name: get hosts monitored by proxy
+- name: get hosts all hosts matching filter
   local_action:
     module: zabbix_api
     server_url: "http://{{ inventory_hostname }}:9595/"
@@ -11,13 +26,35 @@
     api_object: "host"
     api_method: "get"
     api_options:
-        {"filter": {"proxy_hostid": "{{ zabbix_proxy.proxyid }}"},
-         "selectInterfaces": "extend"}
+        {"filter": "{{ zabbix_hosts_filter }}" ,
+         "selectApplications": "extend",
+         "selectDiscoveries": "extend",
+         "selectDiscoveryRule": "extend",
+         "selectGraphs": "extend",
+         "selectHostDiscovery": "extend",
+         "selectHttpTests": "extend",
+         "selectInterfaces": "extend",
+         "selectInventory": "extend",
+         "selectItems": "extend",
+         "selectMacros": "extend",
+         "selectParentTemplates": "extend",
+         "selectScreens": "extend",
+         "selectTriggers": "extend"}
   register: zabbix_hosts
 
-- name: Add discovered host to inventory
+- name: Add discovered host to inventory (Using IP for connections)
   add_host:
-    name: "{{ item.interfaces[0].ip }}"
+    name: "{{ item.host }}"
+    ansible_host: "{{ item.interfaces[0].ip }}"
     groups: zabbix_agent_hosts
-    zabbix_proxy_interface: "{{ zabbix_proxy.interface.dns }}"
+    zabbix_host: "{{ item }}"
+  when: item.interfaces[0].useip|int == 1 and item.interfaces[0].ip != '127.0.0.1'
+  loop: "{{ zabbix_hosts.result }}"
+- name: Add discovered host to inventory (Using DNS for connections)
+  add_host:
+    name: "{{ item.host }}"
+    ansible_host: "{{ item.interfaces[0].dns }}"
+    groups: zabbix_agent_hosts
+    zabbix_host: "{{ item }}"
+  when: item.interfaces[0].useip|int == 0 and item.interfaces[0].dns != 'localhost'
   loop: "{{ zabbix_hosts.result }}"

@@ -1,0 +1,45 @@
+---
+# Find the proxies for the given filter and add them to inventory
+# This role expects the ansible master to have pyzabbix installed
+# It needs to be run for the Zabbix API Host and expects it to listen on port 9595.
+#
+# zabbix_apiuser and zabbix_apipw are used as login variables
+# zabbix_proxies_filter is needed as a variable to filter on the Zabbix Server
+# This role adds all discovered proxies and appends the complete information Zabbix
+# offers via API as a host variable
+#
+# This role assumes that the first interface in zabbix is available for ssh connections
+#
+# If it discovers a proxy with interface setting 127.0.0.1/localhost, it is ignored - this role
+# assumes that it would make no sense to add it to the inventory, as it is most likely not set up correctly
+
+- name: Get all proxies matching filter
+  local_action:
+    module: zabbix_api
+    server_url: "http://{{ inventory_hostname }}:9595/"
+    login_user: "{{ zabbix_apiuser }}"
+    login_password: "{{ zabbix_apipw }}"
+    api_object: "proxy"
+    api_method: "get"
+    api_options:
+      {"filter": "{{ zabbix_proxies_filter }}",
+       "selectInterface": "extend",
+       "selectHosts": "extend"}
+  register: zabbix_proxies
+
+- name: Add discovered proxy to inventory (Using IP for connections)
+  add_host:
+    name: "{{ item.host }}"
+    ansible_host: "{{ item.interface.ip }}"
+    groups: zabbix_proxy_hosts
+    zabbix_proxy: "{{ item }}"
+  when: item.interface.useip|int == 1 and item.interface.ip != '127.0.0.1'
+  loop: "{{ zabbix_proxies.result }}"
+- name: Add discovered proxy to inventory (Using DNS for connections)
+  add_host:
+    name: "{{ item.host }}"
+    ansible_host: "{{ item.interface.dns }}"
+    groups: zabbix_proxy_hosts
+    zabbix_proxy: "{{ item }}"
+  when: item.interface.useip|int == 0 and item.interface.dns != 'localhost'
+  loop: "{{ zabbix_proxies.result }}"

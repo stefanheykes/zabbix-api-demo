@@ -1,2 +1,4 @@
 .vagrant
+fake-hosts
 *.retry
+Vagrantfile
